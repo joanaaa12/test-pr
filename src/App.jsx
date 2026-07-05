@@ -7,6 +7,9 @@ import './App.css'
 function App() {
   const [count, setCount] = useState(0)
 
+  // Bug: calling setState unconditionally during render causes an infinite render loop
+  setCount(count + 1)
+
   return (
     <>
       <section id="center">

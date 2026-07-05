@@ -22,7 +22,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: read
+      issues: write
       id-token: write
 
     steps:
@@ -38,17 +38,20 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
+          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
       - name: Gate merge on review findings
         if: always() && steps.claude-review.outcome == 'success'
         run: |
-          if gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
-              --jq '.[] | select(.user.login == "claude[bot]" or (.user.login | test("claude"; "i"))) | .state' \
-              | grep -q "CHANGES_REQUESTED"; then
-            echo "Claude requested changes on this PR — failing the check to block merge."
+          # The code-review plugin posts one inline PR-review comment per issue found
+          # (never a formal APPROVE/CHANGES_REQUESTED review), so count those instead.
+          count=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
+            --jq '[.[] | select(.user.login == "claude" or (.user.login | test("claude"; "i")))] | length')
+          echo "Found $count inline review comment(s) from Claude."
+          if [ "$count" -gt 0 ]; then
+            echo "Claude flagged $count issue(s) on this PR — failing the check to block merge."
             exit 1
           fi
         env:
